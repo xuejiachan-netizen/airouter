@@ -1,12 +1,16 @@
 package com.xuanjia.airouter.controller;
 
+import com.xuanjia.airouter.annotation.AuthCheck;
 import com.xuanjia.airouter.common.BaseResponse;
 import com.xuanjia.airouter.common.ResultUtils;
+import com.xuanjia.airouter.constant.UserConstant;
 import com.xuanjia.airouter.exception.ErrorCode;
 import com.xuanjia.airouter.exception.ThrowUtils;
+import com.xuanjia.airouter.model.dto.user.UserAddRequest;
 import com.xuanjia.airouter.model.dto.user.UserLoginRequest;
 import com.xuanjia.airouter.model.dto.user.UserRegisterRequest;
 import com.xuanjia.airouter.model.entity.User;
+import com.xuanjia.airouter.model.enums.UserRoleEnum;
 import com.xuanjia.airouter.model.vo.LoginUserVO;
 import com.xuanjia.airouter.service.UserService;
 import jakarta.annotation.Resource;
@@ -66,5 +70,11 @@ public class UserController {
         ThrowUtils.throwIf(request == null, ErrorCode.PARAMS_ERROR);
         boolean result = userService.userLogout(request);
         return ResultUtils.success(result);
+    }
+
+    @AuthCheck(mustRole = UserConstant.ADMIN_ROLE)
+    @PostMapping("/add")
+    public BaseResponse<Long> addUser(@RequestBody UserAddRequest addRequest){
+        return ResultUtils.success(1L);
     }
 }
