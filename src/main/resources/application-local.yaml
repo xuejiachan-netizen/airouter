@@ -15,8 +15,19 @@ spring:
       port: 6379
       database: 0
 
+  ai:
+    openai:
+      # 通义千问兼容 OpenAI 接口
+      base-url: https://dashscope.aliyuncs.com/compatible-mode
+      api-key: sk-ws-H.EMLELHH.FsYD.MEYCIQCLXjg1x7TsnZvY_TaUzUCYtv6twWTzQOQDssAxIvftpgIhAOBLxcMRSMnv2KsTCEaUlRGKhRTFfPg8rnSPSw7AmX-J
+      chat:
+        options:
+          model: deepseek-v4-flash-0731
+          temperature: 0.7
+
 # MyBatis Flex 配置
 mybatis-flex:
   configuration:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
