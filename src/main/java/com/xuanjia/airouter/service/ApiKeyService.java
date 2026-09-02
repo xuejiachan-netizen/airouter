@@ -1,11 +1,12 @@
 package com.xuanjia.airouter.service;
 
+import com.mybatisflex.core.paginate.Page;
+import com.mybatisflex.core.service.IService;
 import com.xuanjia.airouter.model.entity.ApiKey;
 import com.xuanjia.airouter.model.entity.User;
+import com.xuanjia.airouter.model.vo.ApiKeyVO;
 
-import java.util.List;
-
-public interface ApiKeyService {
+public interface ApiKeyService extends IService<ApiKey> {
 
     /**
      * 创建 API key
@@ -14,11 +15,19 @@ public interface ApiKeyService {
 
     /**
      * 获取用户的 API key 列表
-     * @param id
+     *
      * @param userId
+     * @param pageNum
+     * @param pageSize
      * @return
      */
-    List<ApiKey> listUserApiKey(Long id, Long userId);
+    Page<ApiKey> listUserApiKey(Long userId, int pageNum, int pageSize);
+
+    /**
+     * 返回给前端的 apikey 信息
+     * @return
+     */
+    Page<ApiKeyVO> listMyApiKeyVO(Page<ApiKey> apiKeyPage);
 
     /**
      * 撤销 API key
