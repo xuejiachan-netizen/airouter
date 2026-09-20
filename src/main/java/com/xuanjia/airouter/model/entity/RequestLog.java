@@ -13,6 +13,7 @@ import lombok.NoArgsConstructor;
 
 import java.io.Serial;
 import java.io.Serializable;
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -66,6 +67,8 @@ public class RequestLog implements Serializable {
     @Column("duration")
     private Integer duration;
 
+
+
     /**
      * 状态: success/ failed
      */
@@ -89,4 +92,41 @@ public class RequestLog implements Serializable {
      */
     @Column("updateTime")
     private LocalDateTime updateTime;
+
+    @Column("modelId")
+    private Long modelId;
+
+    @Column("traceId")
+    private String traceId;
+
+    //请求标识
+    @Column("requestModel")
+    private String requestModel;
+
+    //请求类型 chat embedding image
+    @Column("requestType")
+    private String requestType;
+
+    //来源 web/api
+    @Column("source")
+    private String source;
+
+    //请求消费/元
+    @Column("cost")
+    private BigDecimal cost;
+
+    @Column("errorCode")
+    private String errorCode;
+
+    @Column("routingStrategy")
+    private String routingStrategy;
+
+    @Column("isFallback")
+    private Integer isFallback;
+
+    @Column("clientIp")
+    private String clientIp;
+
+    @Column("userAgent")
+    private String userAgent;
 }

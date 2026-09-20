@@ -10,7 +10,6 @@ import com.xuanjia.airouter.strategy.RoutingStrategyInterface;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
-import java.util.stream.Stream;
 
 @Component
 public class CostFirstStrategyInterface implements RoutingStrategyInterface {

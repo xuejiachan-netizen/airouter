@@ -45,4 +45,6 @@ public interface ApiKeyService extends IService<ApiKey> {
     ApiKey getByKeyValue(String keyValue);
 
     void updateUsageStats(Long apiKeyId, Integer tokens);
+
+    void updateUsage(Long apiKeyId, Integer promptTokens, Integer completionTokens);
 }

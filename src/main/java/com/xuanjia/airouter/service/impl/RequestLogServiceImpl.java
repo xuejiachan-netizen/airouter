@@ -25,7 +25,6 @@ public class RequestLogServiceImpl extends ServiceImpl<RequestLogMapper, Request
                 .errorMessage(errorMessagers)
                 .modelName(modelName)
                 .promptTokens(promptTokens)
-                .totalTokens(totalTokens)
                 .status(status)
                 .build();
         this.save(requestLog);

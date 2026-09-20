@@ -1,6 +1,7 @@
 package com.xuanjia.airouter.controller;
 
 
+import cn.hutool.extra.servlet.JakartaServletUtil;
 import com.xuanjia.airouter.common.ResultUtils;
 import com.xuanjia.airouter.exception.BusinessException;
 import com.xuanjia.airouter.exception.ErrorCode;
@@ -52,6 +53,8 @@ public class ChatController {
 
         ApiKey apiKey = apiKeyService.getByKeyValue(authorization);
         Long apiKeyId = apiKey.getId();
+        String clientIp = JakartaServletUtil.getClientIP(httpRequest);
+        String userAgent = httpRequest.getHeader("User-Agent");
 
         if (apiKeyId == null){
             throw new BusinessException(ErrorCode.NOT_FOUND_ERROR,"apiKeyId 不存在!");
@@ -61,10 +64,10 @@ public class ChatController {
 
         try {
             if (stream){
-                Flux<String> stringFlux = chatService.chatStream(chatRequest, loginUser.getId(), apiKeyId);
+                Flux<String> stringFlux = chatService.chatStream(chatRequest, loginUser.getId(), apiKeyId, clientIp, userAgent);
                 return ResultUtils.success(stringFlux);
             }else {
-                ChatResponse chatResponse = chatService.chat(chatRequest, loginUser.getId(), apiKeyId);
+                ChatResponse chatResponse = chatService.chat(chatRequest, loginUser.getId(), apiKeyId, clientIp, userAgent);
                 return ResultUtils.success(chatResponse);
             }
 

@@ -37,9 +37,16 @@ public class ChatRequest implements Serializable {
      */
     private Double temperature;
 
+    @JsonProperty("routingStrategy")
+    private String routingStrategy;
+
+    @JsonProperty("enable_reasoning")
+    private Boolean enableReasoning;
     /**
      * 最大生成Token数
      */
     @JsonProperty("max_tokens")
     private Integer maxTokens;
+
+
 }

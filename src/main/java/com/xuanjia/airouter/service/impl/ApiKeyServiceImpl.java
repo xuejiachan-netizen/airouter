@@ -4,6 +4,7 @@ import cn.hutool.core.bean.BeanUtil;
 import cn.hutool.core.util.IdUtil;
 import com.mybatisflex.core.paginate.Page;
 import com.mybatisflex.core.query.QueryWrapper;
+import com.mybatisflex.core.update.UpdateWrapper;
 import com.mybatisflex.spring.service.impl.ServiceImpl;
 import com.xuanjia.airouter.exception.BusinessException;
 import com.xuanjia.airouter.exception.ErrorCode;
@@ -15,6 +16,7 @@ import com.xuanjia.airouter.service.ApiKeyService;
 import jodd.util.StringUtil;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -134,7 +136,6 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKey> impleme
         this.updateById(apiKey);
     }
 
-
     private ApiKeyVO convertApiKeyMask(ApiKey apiKey){
 
         String keyValue = apiKey.getKeyValue();
@@ -145,4 +146,16 @@ public class ApiKeyServiceImpl extends ServiceImpl<ApiKeyMapper, ApiKey> impleme
 
         return apiKeyVO;
     }
+
+    @Override
+    public void updateUsage(Long apiKeyId, Integer promptTokens, Integer completionTokens) {
+        ApiKey apiKey = ApiKey.builder()
+                .id(apiKeyId)
+                .totalTokens((long) (promptTokens + completionTokens))
+                .updateTime(LocalDateTime.now())
+                .build();
+        this.updateById(apiKey);
+
+    }
+
 }

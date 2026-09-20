@@ -1,6 +1,7 @@
 package com.xuanjia.airouter.controller;
 
 
+import cn.hutool.extra.servlet.JakartaServletUtil;
 import com.xuanjia.airouter.common.BaseResponse;
 import com.xuanjia.airouter.common.ResultUtils;
 import com.xuanjia.airouter.exception.BusinessException;
@@ -41,14 +42,16 @@ public class InternalChatController {
         if (chatRequest == null || apiKeyId == null){
             throw new BusinessException(ErrorCode.PARAMS_ERROR,"传递的数据异常！");
         }
-
+        // 2. 获取客户端IP和User-Agent
+        String clientIp = JakartaServletUtil.getClientIP(httpRequest);
+        String userAgent = httpRequest.getHeader("User-Agent");
         Boolean stream = chatRequest.getStream();
         User loginUser = userService.getLoginUser(httpRequest);
 
         if (stream){
-            return ResultUtils.success(chatService.chatStream(chatRequest, loginUser.getId(), apiKeyId));
+            return ResultUtils.success(chatService.chatStream(chatRequest, loginUser.getId(), apiKeyId, clientIp, userAgent));
         }{
-            return ResultUtils.success(chatService.chat(chatRequest, loginUser.getId(), apiKeyId));
+            return ResultUtils.success(chatService.chat(chatRequest, loginUser.getId(), apiKeyId, clientIp, userAgent));
         }
 
     }
