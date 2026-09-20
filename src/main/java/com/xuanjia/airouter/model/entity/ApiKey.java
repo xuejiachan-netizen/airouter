@@ -30,41 +30,49 @@ public class ApiKey implements Serializable {
     /**
      * 用户id
      */
+    @Column("userId")
     private Long userId;
 
     /**
      * API Key值（sk-xxx格式）
      */
+    @Column("keyValue")
     private String keyValue;
 
     /**
      * Key名称/备注
      */
+    @Column("keyName")
     private String keyName;
 
     /**
      * 状态：active/inactive/revoked
      */
+    @Column("status")
     private String status;
 
     /**
      * 已使用Token总数
      */
+    @Column("totalTokens")
     private Long totalTokens;
 
     /**
      * 最后使用时间
      */
+    @Column("lastUsedTime")
     private LocalDateTime lastUsedTime;
 
     /**
      * 创建时间
      */
+    @Column("createTime")
     private LocalDateTime createTime;
 
     /**
      * 更新时间
      */
+    @Column("updateTime")
     private LocalDateTime updateTime;
 
     /**

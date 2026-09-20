@@ -98,8 +98,10 @@ public class ChatServiceImpl implements ChatService {
                 .stream()
                 .chatResponse();
 
+        log.info("chatResponseFlux:{}", chatResponseFlux);
         //3、流式响应
-        return chatResponseFlux.flatMap(chatResponse -> {
+        Flux<String> chatStream =  chatResponseFlux.flatMap(
+                chatResponse -> {
             // 3、1 判断 usage 是否存在 并且对 token 进行赋值
             if (chatResponse.getMetadata().getUsage() != null) {
                 Integer promptToken = chatResponse.getMetadata().getUsage().getPromptTokens();
@@ -130,6 +132,12 @@ public class ChatServiceImpl implements ChatService {
                     0, 0, 0,
                     (int) duration, "success", error.getMessage());
         });
+
+
+        chatStream.doOnSubscribe(subscription -> log.info("我被订阅了！{}",subscription))
+                .doOnNext( a->log.info("订阅了订阅了!{}",a));
+
+        return chatStream;
     }
 
     /**
@@ -178,7 +186,7 @@ public class ChatServiceImpl implements ChatService {
         Integer totalTokens = chatResponse.getMetadata().getUsage().getTotalTokens();
 
         ChatResponse.Usage usage = ChatResponse.Usage.builder()
-                .totalTokens(completionTokens)
+                .completionTokens(completionTokens)
                 .promptTokens(promptTokens)
                 .totalTokens(totalTokens)
                 .build();

@@ -1,12 +1,12 @@
 package com.xuanjia.airouter.service;
 
 
-import cn.hutool.ai.core.Message;
+import com.mybatisflex.core.service.IService;
 import com.xuanjia.airouter.model.entity.RequestLog;
 
 import java.util.List;
 
-public interface RequestLogService {
+public interface RequestLogService extends IService<RequestLog>{
 
     /**
      * 记录请求日志
