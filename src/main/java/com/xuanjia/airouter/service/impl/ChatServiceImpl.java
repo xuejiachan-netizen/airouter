@@ -1,6 +1,7 @@
 package com.xuanjia.airouter.service.impl;
 
 import cn.hutool.core.util.IdUtil;
+import cn.hutool.core.util.StrUtil;
 import com.xuanjia.airouter.exception.BusinessException;
 import com.xuanjia.airouter.exception.ErrorCode;
 import com.xuanjia.airouter.model.dto.chat.ChatMessage;
@@ -13,58 +14,184 @@ import com.xuanjia.airouter.model.entity.ModelProvider;
 import com.xuanjia.airouter.service.*;
 import jakarta.annotation.Resource;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 import java.util.List;
 
+/**
+ * 聊天服务实现
+ *
+ * @author <a href="https://codefather.cn">编程导航学习圈</a>
+ */
 @Slf4j
 @Service
-//todo review 代码，难难难
 public class ChatServiceImpl implements ChatService {
 
-    private static final int MAX_FALLBACK_SIZE = 3;
+    @Resource
+    private RoutingService routingService;
 
     @Resource
     private ModelInvokeService modelInvokeService;
 
     @Resource
+    private ModelProviderService modelProviderService;
+
+    @Resource
     private RequestLogService requestLogService;
 
-    @Resource
-    private ModelService modelService;
-
-    @Resource
-    private RoutingService routingService;
-    @Autowired
-    private ModelProviderService modelProviderService;
+    /**
+     * 最大 Fallback 重试次数
+     */
+    private static final int MAX_FALLBACK_RETRIES = 3;
 
     @Override
     public ChatResponse chat(ChatRequest chatRequest, Long userId, Long apiKeyId, String clientIp, String userAgent) {
-        List<Model> models = modelService.listHealthModel();
-        String requestModel = chatRequest.getModel();
-        String routingStrategy = chatRequest.getRoutingStrategy();
-        String traceId = IdUtil.simpleUUID();
         long startTime = System.currentTimeMillis();
+        String requestedModel = chatRequest.getModel();
+        String traceId = IdUtil.simpleUUID();
 
-        //确认路由策略
-        String strategyType = this.determineStrategyType(routingStrategy, requestModel);
+        // 确定路由策略：优先使用请求中指定的策略，否则根据是否指定模型决定
+        String strategyType = determineStrategyType(chatRequest.getRoutingStrategy(), requestedModel);
 
-        //获取相关的 routing 模型
-        Model primaryModel = routingService.selectModel(strategyType,"chat", requestModel);
+        // 选择模型
+        Model selectedModel = routingService.selectModel(strategyType, "chat", requestedModel);
 
-        //获取相关的 fallback 模型
-        List<Model> fallbackModels = routingService.fallbackInvokeModel(strategyType, "chat",requestModel);
+        if (selectedModel == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "没有可用的模型");
+        }
 
+        // 获取 Fallback 模型列表
+        List<Model> fallbackModels = routingService.getFallbackModels(strategyType, "chat", requestedModel);
+
+        // 尝试调用主模型
         boolean isFallback = false;
 
-        return this.invokeFallback(primaryModel, fallbackModels,
-                chatRequest, userId, apiKeyId, traceId, startTime,
-                strategyType, isFallback, clientIp, userAgent);
+        try {
+            return invokeModelWithFallback(selectedModel, fallbackModels, chatRequest,
+                    userId, apiKeyId, traceId, startTime, strategyType, isFallback, clientIp, userAgent);
+        } catch (Exception e) {
+            log.error("所有模型调用失败", e);
+            long duration = System.currentTimeMillis() - startTime;
+            // 记录失败日志
+            requestLogService.logRequest(RequestLogDto.builder()
+                    .traceId(traceId)
+                    .userId(userId)
+                    .apiKeyId(apiKeyId)
+                    .requestModel(requestedModel)
+                    .requestType("chat")
+                    .source(apiKeyId != null ? "api" : "web")
+                    .duration((int) duration)
+                    .status("failed")
+                    .errorMessage(e.getMessage())
+                    .errorCode("SYSTEM_ERROR")
+                    .routingStrategy(strategyType)
+                    .isFallback(false)
+                    .clientIp(clientIp)
+                    .userAgent(userAgent)
+                    .build());
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "调用模型失败: " + e.getMessage());
+        }
     }
 
+    /**
+     * 带 Fallback 的模型调用
+     */
+    private ChatResponse invokeModelWithFallback(Model primaryModel, List<Model> fallbackModels,
+                                                 ChatRequest chatRequest, Long userId, Long apiKeyId,
+                                                 String traceId, long startTime, String strategyType, boolean isFallback,
+                                                 String clientIp, String userAgent) {
+        // 尝试调用主模型
+        try {
+            return callModel(primaryModel, chatRequest, userId, apiKeyId, traceId, startTime, strategyType, isFallback, clientIp, userAgent);
+        } catch (Exception e) {
+            log.warn("模型 {} 调用失败，尝试 Fallback", primaryModel.getModelKey(), e);
 
+            // 如果主模型失败且有 Fallback 模型，尝试 Fallback
+            if (fallbackModels != null && !fallbackModels.isEmpty()) {
+                int retries = Math.min(fallbackModels.size(), MAX_FALLBACK_RETRIES);
+                for (int i = 0; i < retries; i++) {
+                    Model fallbackModel = fallbackModels.get(i);
+                    try {
+                        log.info("尝试 Fallback 模型: {}", fallbackModel.getModelKey());
+                        return callModel(fallbackModel, chatRequest, userId, apiKeyId, traceId, startTime, strategyType, true, clientIp, userAgent);
+                    } catch (Exception fallbackException) {
+                        log.warn("Fallback 模型 {} 调用失败", fallbackModel.getModelKey(), fallbackException);
+                        if (i == retries - 1) {
+                            throw fallbackException;
+                        }
+                    }
+                }
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 调用单个模型
+     */
+    private ChatResponse callModel(Model model, ChatRequest chatRequest, Long userId, Long apiKeyId,
+                                   String traceId, long startTime, String strategyType, boolean isFallback,
+                                   String clientIp, String userAgent) {
+        // 获取提供者信息
+        ModelProvider provider = modelProviderService.getById(model.getProviderId());
+        if (provider == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "模型提供者不存在");
+        }
+
+        try {
+            // 调用模型
+            org.springframework.ai.chat.model.ChatResponse aiResponse =
+                    modelInvokeService.invoke(model, provider, chatRequest);
+
+            // 转换响应格式
+            ChatResponse response = convertResponse(aiResponse, model.getModelKey());
+
+            // 记录请求日志
+            long duration = System.currentTimeMillis() - startTime;
+            requestLogService.logRequest(RequestLogDto.builder()
+                    .traceId(traceId)
+                    .userId(userId)
+                    .apiKeyId(apiKeyId)
+                    .modelId(model.getId())
+                    .requestModel(model.getModelKey())
+                    .requestType("chat")
+                    .source(apiKeyId != null ? "api" : "web")
+                    .promptTokens(response.getUsage().getPromptTokens())
+                    .completionTokens(response.getUsage().getCompletionTokens())
+                    .totalTokens(response.getUsage().getTotalTokens())
+                    .duration((int) duration)
+                    .status("success")
+                    .routingStrategy(strategyType)
+                    .isFallback(isFallback)
+                    .clientIp(clientIp)
+                    .userAgent(userAgent)
+                    .build());
+
+            return response;
+        } catch (Exception e) {
+            long duration = System.currentTimeMillis() - startTime;
+            // 记录失败日志
+            requestLogService.logRequest(RequestLogDto.builder()
+                    .traceId(traceId)
+                    .userId(userId)
+                    .apiKeyId(apiKeyId)
+                    .modelId(model.getId())
+                    .requestModel(model.getModelKey())
+                    .requestType("chat")
+                    .source(apiKeyId != null ? "api" : "web")
+                    .duration((int) duration)
+                    .status("failed")
+                    .errorMessage(e.getMessage())
+                    .errorCode("MODEL_ERROR")
+                    .routingStrategy(strategyType)
+                    .isFallback(isFallback)
+                    .clientIp(clientIp)
+                    .userAgent(userAgent)
+                    .build());
+            throw e;
+        }
+    }
 
     @Override
     public Flux<String> chatStream(ChatRequest chatRequest, Long userId, Long apiKeyId, String clientIp, String userAgent) {
@@ -204,121 +331,54 @@ public class ChatServiceImpl implements ChatService {
         return text.replace("\n", "\\n");
     }
 
-    private String determineStrategyType(String routingStrategy, String requestModel) {
-        if (routingStrategy != null && requestModel != null){
-            return routingStrategy;
-        }else if (routingStrategy == null && requestModel != null){
-            return "fixed";
-        }
-
-        return "auto";
-    }
-
-    private ChatResponse invokeFallback(Model primaryModel, List<Model> fallbackModels,
-                                        ChatRequest chatRequest, Long userId, Long apiKeyId,
-                                        String traceId, long startTime, String strategyType, boolean isFallback,
-                                        String clientIp, String userAgent){
-        try {
-            return this.callModel(primaryModel, chatRequest, userId, apiKeyId, traceId, startTime, strategyType,
-                    isFallback, clientIp, userAgent);
-        }catch (Exception e){
-            int fallbackSize = Math.min(MAX_FALLBACK_SIZE, fallbackModels.size());
-            for (int i = 0; i < fallbackSize; i++) {
-                Model fallbackModel = fallbackModels.get(i);
-                ChatResponse chatResponse = this.callModel(fallbackModel, chatRequest, userId, apiKeyId, traceId, startTime, strategyType,
-                        true, clientIp, userAgent);
-                return chatResponse;
-            }
-            log.error("fallback机制异常，没有找到合适的模型！{}",e.getMessage());
-            throw e;
-        }
-    }
-
-
-    //modelkey 对应模型标识
-    private ChatResponse callModel(Model primaryModel,
-                                   ChatRequest chatRequest, Long userId, Long apiKeyId,
-                                   String traceId, long startTime, String strategyType, boolean isFallback,
-                                   String clientIp, String userAgent){
-        try {
-            //第一步：调用模型
-            Long providerId = primaryModel.getProviderId();
-            ModelProvider modelProvider = modelProviderService.getById(providerId);
-            org.springframework.ai.chat.model.ChatResponse aiResponse = modelInvokeService.invoke(primaryModel, modelProvider, chatRequest);
-
-            //第二步：转换响应格式
-            ChatResponse chatResponse = this.convertChatResonse(aiResponse, primaryModel.getModelKey());
-            //第三步：记录相关日志
-            requestLogService
-                    .logRequest(
-                            RequestLogDto.builder()
-                                    .apiKeyId(apiKeyId)
-                                    .clientIp(clientIp)
-                                    .completionTokens(chatResponse.getUsage().getPromptTokens())
-                                    .promptTokens(chatResponse.getUsage().getPromptTokens())
-                                    .totalTokens(chatResponse.getUsage().getTotalTokens())
-                                    .duration((int)(System.currentTimeMillis() - startTime))
-                                    .isFallback(isFallback)
-                                    .modelId(primaryModel.getId())
-                                    .requestModel(primaryModel.getModelKey())
-                                    .requestType("chat")
-                                    .routingStrategy(strategyType)
-                                    .source(apiKeyId != null ? "api" : "web")
-                                    .status("success")
-                                    .traceId(traceId)
-                                    .userAgent(userAgent)
-                                    .userId(userId)
-                                    .build());
-            return chatResponse;
-        }catch (Exception e){
-            //第三步：记录相关日志
-            requestLogService
-                    .logRequest(
-                            RequestLogDto.builder()
-                                    .apiKeyId(apiKeyId)
-                                    .clientIp(clientIp)
-                                    .duration((int)(System.currentTimeMillis() - startTime))
-                                    .isFallback(isFallback)
-                                    .modelId(primaryModel.getId())
-                                    .requestModel(primaryModel.getModelKey())
-                                    .requestType("chat")
-                                    .routingStrategy(strategyType)
-                                    .source(apiKeyId != null ? "api" : "web")
-                                    .status("failure")
-                                    .traceId(traceId)
-                                    .userAgent(userAgent)
-                                    .userId(userId)
-                                    .errorMessage(e.getMessage())
-                                    .errorCode(ErrorCode.OPERATION_ERROR.getMessage())
-                                    .build());
-            log.error("error,{}",e.getMessage());
-            throw e;
-        }
-    }
-
-    private ChatResponse convertChatResonse(org.springframework.ai.chat.model.ChatResponse chatResponse, String modelKey) {
-
-        String content = chatResponse.getResult().getOutput().getText();
-        String finishReason = chatResponse.getResult().getMetadata().getFinishReason();
-        Integer promptTokens = chatResponse.getMetadata().getUsage().getPromptTokens();
-        Integer completionTokens = chatResponse.getMetadata().getUsage().getCompletionTokens();
-        Integer totalTokens = chatResponse.getMetadata().getUsage().getTotalTokens();
+    /**
+     * 转换响应格式
+     */
+    private ChatResponse convertResponse(org.springframework.ai.chat.model.ChatResponse aiResponse, String modelName) {
+        String content = aiResponse.getResult().getOutput().getText();
 
         ChatResponse.Usage usage = ChatResponse.Usage.builder()
-                .completionTokens(completionTokens)
-                .promptTokens(promptTokens)
-                .totalTokens(totalTokens)
+                .promptTokens(aiResponse.getMetadata().getUsage().getPromptTokens() != null ?
+                        aiResponse.getMetadata().getUsage().getPromptTokens() : 0)
+                .completionTokens(aiResponse.getMetadata().getUsage().getCompletionTokens() != null ?
+                        aiResponse.getMetadata().getUsage().getCompletionTokens() : 0)
+                .totalTokens(aiResponse.getMetadata().getUsage().getTotalTokens() != null ?
+                        aiResponse.getMetadata().getUsage().getTotalTokens() : 0)
                 .build();
 
         ChatResponse.Choice choice = ChatResponse.Choice.builder()
                 .index(0)
-                .finishReason(finishReason)
                 .message(new ChatMessage("assistant", content))
+                .finishReason(aiResponse.getResult().getMetadata().getFinishReason())
                 .build();
+
         return ChatResponse.builder()
+                .id(IdUtil.simpleUUID())
+                .object("chat.completion")
+                .created(System.currentTimeMillis() / 1000)
+                .model(modelName)
                 .choices(List.of(choice))
                 .usage(usage)
-                .model(modelKey)
                 .build();
+    }
+
+    /**
+     * 确定路由策略类型
+     *
+     * @param requestedStrategy 请求中指定的策略
+     * @param requestedModel    请求中指定的模型
+     * @return 最终使用的策略类型
+     */
+    private String determineStrategyType(String requestedStrategy, String requestedModel) {
+        // 如果请求中指定了策略，优先使用
+        if (StrUtil.isNotBlank(requestedStrategy)) {
+            return requestedStrategy;
+        }
+        // 如果指定了模型但没有指定策略，使用固定模型策略
+        if (StrUtil.isNotBlank(requestedModel)) {
+            return "fixed";
+        }
+        // 默认使用自动路由策略
+        return "auto";
     }
 }

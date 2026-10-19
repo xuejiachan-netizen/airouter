@@ -2,6 +2,7 @@ package com.xuanjia.airouter.service;
 
 
 import cn.hutool.ai.core.Message;
+import com.xuanjia.airouter.model.dto.reqeustLog.RequestLogDto;
 import com.xuanjia.airouter.model.entity.RequestLog;
 
 import java.util.List;
@@ -10,19 +11,9 @@ public interface RequestLogService {
 
     /**
      * 记录请求日志
-     * @param userId
-     * @param apiKeyId
-     * @param modelName
-     * @param promptTokens
-     * @param completionTokens
-     * @param totalTokens
-     * @param duration
-     * @param status
-     * @param errorMessagers
+
      */
-    void logReuqest(Long userId, Long apiKeyId, String modelName,
-                    Integer promptTokens, Integer completionTokens, Integer totalTokens,
-                    Integer duration, String status, String errorMessagers);
+    void logRequest(RequestLogDto logDTO);
 
 
     /**
