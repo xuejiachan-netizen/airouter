@@ -2,6 +2,7 @@ package com.xuanjia.airouter.controller;
 
 
 import cn.hutool.extra.servlet.JakartaServletUtil;
+import com.xuanjia.airouter.annotation.RateLimit;
 import com.xuanjia.airouter.common.ResultUtils;
 import com.xuanjia.airouter.exception.BusinessException;
 import com.xuanjia.airouter.exception.ErrorCode;
@@ -37,6 +38,7 @@ public class ChatController {
 
     @PostMapping(value = "/completions",
             produces = {MediaType.APPLICATION_JSON_VALUE, MediaType.TEXT_EVENT_STREAM_VALUE})
+    @RateLimit(limitType = RateLimit.LimitType.APIKEY, limit = 60)
     public Object chatCompletions(@RequestHeader(value = "Authorization", required = false) String authorization,
                                     @RequestBody ChatRequest chatRequest,
                                   HttpServletRequest httpRequest

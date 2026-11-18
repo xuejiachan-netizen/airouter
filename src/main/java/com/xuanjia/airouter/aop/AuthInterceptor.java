@@ -38,7 +38,7 @@ public class AuthInterceptor {
         UserRoleEnum userRoleEnum = UserRoleEnum.getEnumByValue(userRole);
 
         if (userRoleEnum == null){
-            throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限，禁止访问！");
+                throw new BusinessException(ErrorCode.NO_AUTH_ERROR, "没有权限，禁止访问！");
         }
 
         if (UserRoleEnum.ADMIN.equals(mustRoleEnum) && ! UserRoleEnum.ADMIN.equals(userRoleEnum)){
